@@ -40,22 +40,26 @@ public class RSALibrary {
      */
     /* Throws IOException */
     /***********************************************************************************/
-    public void generateKeys() throws IOException {
+    public void generateKeys(byte [] passphrase) throws IOException {
 
         try {
 
+            SymmetricCipher s = new SymmetricCipher();
             final KeyPairGenerator keyGen = KeyPairGenerator.getInstance(ALGORITHM);
             keyGen.initialize(1024);
 
             // TO-DO: Use KeyGen to generate a public and a private key
             KeyPair keyPair = keyGen.genKeyPair();
 
+            // Encrypt private key
+            byte[] cipherKey = s.encryptCBC(keyPair.getPrivate().getEncoded(), passphrase);
+
             // TO-DO: store the public key in the file PUBLIC_KEY_FILE
             // TO-DO: store the private key in the file PRIVATE_KEY_FILE
             Files.write(Path.of(PUBLIC_KEY_FILE), keyPair.getPublic().getEncoded());
-            Files.write(Path.of(PRIVATE_KEY_FILE), keyPair.getPrivate().getEncoded());
+            Files.write(Path.of(PRIVATE_KEY_FILE), cipherKey);
 
-        } catch (NoSuchAlgorithmException | IOException e) {
+        } catch (Exception e) {
             System.out.println("Exception: " + e.getMessage());
             System.exit(-1);
         }

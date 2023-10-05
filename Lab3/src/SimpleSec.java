@@ -3,50 +3,62 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Scanner;
+import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 
 public class SimpleSec {
     public static void main(String[] args) throws Exception {
-        recogerArgumentos(args);
-    }
-
-    public static void recogerArgumentos(String[] args) {
-        if (args.length >= 1 & args.length <= 3) {
-            if (args[0].equals("g") | args[0].equals("e") | args[0].equals("d")) {
-                if (args[0].equals("g")) {
-                    genRSAFunc();
-                } else if (args[0].equals("e")) {
-                    if (args.length == 3) {
-                        encryptFileFunc(args[1], args[2]);
-                    } else {
-                        printError(0);
-                    }
-                } else {
-                    if (args.length == 3) {
-                        decryptFileFunc();
-                    } else {
-                        printError(1);
-                    }
-                }
-            } else {
-                printError(2);
-            }
-        } else {
-            printError(3);
+        try {
+            argumentParser(args);
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
         }
     }
 
-    public static void genRSAFunc() {
+    /*************************************************************************************/
+    /* Method to parse arguments */
+    /*************************************************************************************/
+    public static void argumentParser(String[] args) throws Exception {
+        if (args.length >= 1 & args.length <= 3) {
+            switch (args[0]) {
+                case "g":
+                    if (args.length != 1) throw new InvalidParametersException("Too many arguments. Format is: java SimpleSec g"); 
+                    genRSAFunc();
+                    break;
+                case "e":
+                    if (args.length != 3) throw new InvalidParametersException("Introduce the source file path and the destination file.");
+                    encryptFileFunc(args[1], args[2]);
+                    break;
+                case "d":
+                    if (args.length != 3) throw new InvalidParametersException("Introduce the source file path and the destination file.");
+                    decryptFileFunc(args[1], args[2]);
+                    break;
+                default:
+                    throw new InvalidParametersException("The format should be: java SimpleSec <g|e|d> [sourceFile] [destinationFile]");
+            }
+        } else {
+            throw new InvalidParametersException("The format should be: java SimpleSec <g|e|d> [sourceFile] [destinationFile]");
+        }
+    }
+
+    /*************************************************************************************/
+    /* Method to generate RSA keys */
+    /*************************************************************************************/
+    public static void genRSAFunc() throws Exception {
         RSALibrary rsa = new RSALibrary();
 
+        // Get passphrase from the user
         System.out.println("Introduce a passphrase to encrypt the private key:");
         Scanner scanner = new Scanner(System.in);
         String passphrase = scanner.nextLine();
+
+        // Check valid passphrase
         while (passphrase.length() != 16) {
             if (passphrase.length() > 16) {
                 System.out.println("Passphrase too long. It must be 16 characters long.");
@@ -57,11 +69,8 @@ public class SimpleSec {
             passphrase = scanner.nextLine();
         }
 
-        try {
-            rsa.generateKeys(passphrase.getBytes());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        // Generate RSA keys
+        rsa.generateKeys(passphrase.getBytes());
     }
 
     public static void encryptFileFunc(String sourceFile, String destFile) {
@@ -77,7 +86,10 @@ public class SimpleSec {
             
             byte [] fileBytes = Files.readAllBytes(Path.of(sourceFile));
             byte [] ciphertext = s.encryptCBC(fileBytes, AESKey);
-            byte [] cipherKey = rsa.encrypt(ciphertext, publicKey);
+            byte [] cipherKey = rsa.encrypt(AESKey, publicKey);
+            System.out.print("AESkey: ");
+            printBytesInHex(cipherKey);
+            System.out.println("len: " + cipherKey.length);
 
             // Concat ciphertext and cipherKey    
             byte[] packet = new byte[ciphertext.length + cipherKey.length];
@@ -98,7 +110,7 @@ public class SimpleSec {
         }
     }
 
-    public static void decryptFileFunc(String sourceFile, String destFile) {
+    public static void decryptFileFunc(String sourceFile, String destFile) throws Exception {
 
         SymmetricCipher s = new SymmetricCipher();
         RSALibrary rsa = new RSALibrary();
@@ -108,36 +120,34 @@ public class SimpleSec {
 
         byte [] sign = new byte[128];
         byte[] filesBytes;
+        byte[] AESKeyCipher = new byte[128];
+        byte[] AESKey = new byte[16];
         
         try {
             filesBytes = Files.readAllBytes(Path.of(sourceFile));
             byte[] packet = new byte[filesBytes.length - 128];
+            byte[] ciphertext = new byte[packet.length - 128];
+            byte[] plaintext = new byte[packet.length - 128];
             System.arraycopy(filesBytes, filesBytes.length - 128, sign, 0, sign.length);
             System.arraycopy(filesBytes, 0, packet, 0, filesBytes.length - 128);
             if (!rsa.verify(packet, sign, publicKey)) {
-                System.out.println("Error. The ");
+                System.out.println("Error. The verification is not working.");
             }
-        } catch (IOException e) {
+            System.arraycopy(packet, packet.length - 128, AESKeyCipher, 0, AESKeyCipher.length);
+            AESKey = rsa.decrypt(AESKeyCipher, privateKey);
+            System.out.print("AESkey: ");
+            printBytesInHex(AESKey);
+            System.out.println("len: " + AESKey.length);
+            System.arraycopy(packet, 0, ciphertext, 0, ciphertext.length);
+            plaintext = s.decryptCBC(ciphertext, AESKey);
+
+            Files.write(Path.of(destFile), plaintext);
+            
+        } catch (Exception e) {
             e.printStackTrace();
         }
         
      
-    }
-
-    public static void printError(int err) {
-        System.out.printf("Error: ");
-        if (err == 0 | err == 1) {
-            System.out.println("Introduce the source file path and the destination file.");
-            if (err == 0) {
-                System.out.println("Format: java SimpleSec <e> <sourceFile> <destinationFile>");
-            } else {
-                System.out.println("Format: java SimpleSec <d> <sourceFile> <destinationFile>");
-            }  
-        } else if (err == 2) {
-            System.out.println("First argument should be: g/e/d");
-        } else {
-            System.out.println("The format should be: java SimpleSec <command> [sourceFile] [destinationFile]");
-        }
     }
 
     private static byte [] randomKeyGenerator() {
@@ -147,7 +157,7 @@ public class SimpleSec {
         return (randomBytes);
     }
 
-    private static PrivateKey getPrivateKey() {
+    private static PrivateKey getPrivateKey() throws Exception{
 
         SymmetricCipher s = new SymmetricCipher();
         Scanner scanner = new Scanner(System.in);
@@ -161,8 +171,10 @@ public class SimpleSec {
             PKCS8EncodedKeySpec keyspec2 = new PKCS8EncodedKeySpec(privateKeyBytes);
             KeyFactory keyfactory2 = KeyFactory.getInstance("RSA");
             privateKey = keyfactory2.generatePrivate(keyspec2);
+        } catch (InvalidKeyException e) {
+            throw new WrongPassphraseException("Password is not correct.");
         } catch (Exception e) {
-            e.printStackTrace();
+            throw e;
         }
         return privateKey;
 
@@ -184,5 +196,15 @@ public class SimpleSec {
         }
 
         return publicKey;
+    }
+
+    /*************************************************************************************/
+        /* Method to print bytes in hex */
+    /*************************************************************************************/
+    public static void printBytesInHex(byte[] byteArray) {
+        for (byte b : byteArray) {
+            System.out.printf("%02X", b);
+        }
+        System.out.println();
     }
 }

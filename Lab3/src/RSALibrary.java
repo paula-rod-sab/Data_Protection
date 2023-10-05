@@ -35,33 +35,28 @@ public class RSALibrary {
 
     /***********************************************************************************/
     /* Generates an RSA key pair (a public and a private key) of 1024 bits length */
-    /*
-     * Stores the keys in the files defined by PUBLIC_KEY_FILE and PRIVATE_KEY_FILE
-     */
+    /* Stores the keys in the files defined by PUBLIC_KEY_FILE and PRIVATE_KEY_FILE */
     /* Throws IOException */
     /***********************************************************************************/
-    public void generateKeys(byte [] passphrase) throws IOException {
+    public void generateKeys(byte [] passphrase) throws Exception {
+        SymmetricCipher s = new SymmetricCipher();
 
         try {
-
-            SymmetricCipher s = new SymmetricCipher();
             final KeyPairGenerator keyGen = KeyPairGenerator.getInstance(ALGORITHM);
             keyGen.initialize(1024);
 
-            // TO-DO: Use KeyGen to generate a public and a private key
+            // Use KeyGen to generate a public and a private key
             KeyPair keyPair = keyGen.genKeyPair();
 
             // Encrypt private key
             byte[] cipherKey = s.encryptCBC(keyPair.getPrivate().getEncoded(), passphrase);
 
-            // TO-DO: store the public key in the file PUBLIC_KEY_FILE
-            // TO-DO: store the private key in the file PRIVATE_KEY_FILE
+            // Store the public and private key in the files
             Files.write(Path.of(PUBLIC_KEY_FILE), keyPair.getPublic().getEncoded());
             Files.write(Path.of(PRIVATE_KEY_FILE), cipherKey);
 
         } catch (Exception e) {
-            System.out.println("Exception: " + e.getMessage());
-            System.exit(-1);
+            throw e;
         }
 
     }

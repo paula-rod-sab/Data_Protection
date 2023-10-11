@@ -8,7 +8,6 @@ import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
-import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 
@@ -17,7 +16,7 @@ public class SimpleSec {
         try {
             argumentParser(args);
         } catch (Exception e) {
-            System.err.println(e.getMessage());
+            System.out.println(e.getMessage());
         }
     }
 
@@ -73,9 +72,10 @@ public class SimpleSec {
         rsa.generateKeys(passphrase.getBytes());
     }
 
-    public static void encryptFileFunc(String sourceFile, String destFile) {
-        // TO DO: si no hay claves rsa, lanza excepcion -- RSALibrary encrypt
-        // TO DO: si mete mal la contraseña al crear el objeto PrivateKey da error
+    /*************************************************************************************/
+    /* Method to encrypt the file */
+    /*************************************************************************************/
+    public static void encryptFileFunc(String sourceFile, String destFile) throws Exception {
         SymmetricCipher s = new SymmetricCipher();
         RSALibrary rsa = new RSALibrary();
         byte [] AESKey = randomKeyGenerator();
@@ -87,9 +87,6 @@ public class SimpleSec {
             byte [] fileBytes = Files.readAllBytes(Path.of(sourceFile));
             byte [] ciphertext = s.encryptCBC(fileBytes, AESKey);
             byte [] cipherKey = rsa.encrypt(AESKey, publicKey);
-            System.out.print("AESkey: ");
-            printBytesInHex(cipherKey);
-            System.out.println("len: " + cipherKey.length);
 
             // Concat ciphertext and cipherKey    
             byte[] packet = new byte[ciphertext.length + cipherKey.length];
@@ -99,17 +96,21 @@ public class SimpleSec {
             // Sign the concat packet
             byte [] sign = rsa.sign(packet, privateKey);
             byte[] signedPacket = new byte[packet.length + sign.length];
-            System.out.println("Len:" + sign.length);
             System.arraycopy(packet, 0, signedPacket, 0, packet.length);
             System.arraycopy(sign, 0, signedPacket, packet.length, sign.length);
 
             Files.write(Path.of(destFile), signedPacket);
 
+        } catch (IOException e) {
+            throw new FileException("The file to encrypt does not exist.");
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    /*************************************************************************************/
+    /* Method to decrypt the file */
+    /*************************************************************************************/
     public static void decryptFileFunc(String sourceFile, String destFile) throws Exception {
 
         SymmetricCipher s = new SymmetricCipher();
@@ -131,25 +132,26 @@ public class SimpleSec {
             System.arraycopy(filesBytes, filesBytes.length - 128, sign, 0, sign.length);
             System.arraycopy(filesBytes, 0, packet, 0, filesBytes.length - 128);
             if (!rsa.verify(packet, sign, publicKey)) {
-                System.out.println("Error. The verification is not working.");
+                throw new SignException("The sign is not correct.");
             }
             System.arraycopy(packet, packet.length - 128, AESKeyCipher, 0, AESKeyCipher.length);
             AESKey = rsa.decrypt(AESKeyCipher, privateKey);
-            System.out.print("AESkey: ");
-            printBytesInHex(AESKey);
-            System.out.println("len: " + AESKey.length);
             System.arraycopy(packet, 0, ciphertext, 0, ciphertext.length);
             plaintext = s.decryptCBC(ciphertext, AESKey);
 
             Files.write(Path.of(destFile), plaintext);
             
+        } catch (IOException e) {
+            throw new FileException("The file to decrypt does not exist.");
         } catch (Exception e) {
             e.printStackTrace();
-        }
-        
+        }  
      
     }
 
+    /*************************************************************************************/
+    /* Aux method to generate a random key */
+    /*************************************************************************************/
     private static byte [] randomKeyGenerator() {
         SecureRandom secureRandom = new SecureRandom();
         byte[] randomBytes = new byte[16];
@@ -157,20 +159,25 @@ public class SimpleSec {
         return (randomBytes);
     }
 
+    /*************************************************************************************/
+    /* Aux method to get the private key */
+    /*************************************************************************************/
     private static PrivateKey getPrivateKey() throws Exception{
 
         SymmetricCipher s = new SymmetricCipher();
-        Scanner scanner = new Scanner(System.in);
-        System.out.println("Introduce your passphrase:");
-        String passphrase = scanner.nextLine();
         byte[] bytesPriv;
         PrivateKey privateKey = null;
         try {
             bytesPriv = Files.readAllBytes(Paths.get("./private.key"));
+            Scanner scanner = new Scanner(System.in);
+            System.out.println("Introduce your passphrase:");
+            String passphrase = scanner.nextLine();
             byte [] privateKeyBytes = s.decryptCBC(bytesPriv, passphrase.getBytes());
             PKCS8EncodedKeySpec keyspec2 = new PKCS8EncodedKeySpec(privateKeyBytes);
             KeyFactory keyfactory2 = KeyFactory.getInstance("RSA");
             privateKey = keyfactory2.generatePrivate(keyspec2);
+        } catch (IOException e) {
+            throw new FileException("The RSA key pair has not been generated.");
         } catch (InvalidKeyException e) {
             throw new WrongPassphraseException("Password is not correct.");
         } catch (Exception e) {
@@ -180,9 +187,10 @@ public class SimpleSec {
 
     }
 
-    private static PublicKey getPublicKey() {
-
-        RSALibrary rsa = new RSALibrary();
+    /*************************************************************************************/
+    /* Aux method to get the public key */
+    /*************************************************************************************/
+    private static PublicKey getPublicKey() throws Exception {
 
         byte[] bytesPub;
         PublicKey publicKey = null;
@@ -191,15 +199,17 @@ public class SimpleSec {
             X509EncodedKeySpec keyspec = new X509EncodedKeySpec(bytesPub);
             KeyFactory keyfactory = KeyFactory.getInstance("RSA");
             publicKey = keyfactory.generatePublic(keyspec);
+        } catch (IOException e) {
+            throw new FileException("The RSA key pair has not been generated.");
         } catch (Exception e) {
-            e.printStackTrace();
+            throw e;
         }
 
         return publicKey;
     }
 
     /*************************************************************************************/
-        /* Method to print bytes in hex */
+    /* Method to print bytes in hex */
     /*************************************************************************************/
     public static void printBytesInHex(byte[] byteArray) {
         for (byte b : byteArray) {
@@ -207,4 +217,5 @@ public class SimpleSec {
         }
         System.out.println();
     }
+
 }

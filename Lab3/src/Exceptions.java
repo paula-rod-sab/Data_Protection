@@ -9,3 +9,15 @@ class WrongPassphraseException extends Exception{
         super(message);
     }
 }
+
+class FileException extends Exception{
+    public FileException(String message) {
+        super(message);
+    }
+}
+
+class SignException extends Exception{
+    public SignException(String message) {
+        super(message);
+    }
+}
